@@ -22,7 +22,6 @@ L'application démarre vide : le dossier `data/` est créé au premier lancement
 ## Lancement
 
 - **Windows** : double-clique sur `Lancer (Windows).bat`.
-- **Mac** : double-clique sur `Lancer (Mac).command`. La première fois, fais clic droit → Ouvrir. Si ça ne marche pas, lance `chmod +x "Lancer (Mac).command"` dans un terminal.
 - **Ou en ligne de commande** :
   ```bash
   pip install -r requirements.txt
