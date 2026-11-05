@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rando Tracker</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M1 28 L11 9 L17 19 L21 13 L31 28 Z' fill='%231f6f5c'/></svg>">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M1 28 L11 9 L17 19 L21 13 L31 28 Z"/></svg>
+    <span>Rando Tracker</span>
+  </div>
+  <nav class="tabs">
+    <button class="tab active" data-view="map">Carte 3D</button>
+    <button class="tab" data-view="stats">Statistiques</button>
+    <button class="tab" data-view="people">Compagnons</button>
+  </nav>
+  <div class="import-btns">
+    <label class="btn" title="Choisir le dossier d'un export Strava (ou n'importe quel dossier de traces)">
+      Importer un dossier
+      <input type="file" id="folder-input" webkitdirectory multiple hidden>
+    </label>
+    <label class="btn primary" title="Fichiers GPX, FIT, TCX (même compressés en .gz), et activities.csv de Strava">
+      Importer des fichiers
+      <input type="file" id="gpx-input" accept=".gpx,.fit,.tcx,.gz,.csv" multiple hidden>
+    </label>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="search"><input id="search" type="search" placeholder="Rechercher : nom, lieu, personne…"></div>
+    <details class="filters" id="filters">
+      <summary>Filtres <span id="filter-count" class="badge" hidden></span></summary>
+      <div class="filter-grid">
+        <label>Du<input type="date" data-filter="from"></label>
+        <label>Au<input type="date" data-filter="to"></label>
+        <label>Année<select data-filter="year"></select></label>
+        <label>Saison<select data-filter="season"></select></label>
+        <label data-scope="tracks">Activité<select data-filter="type"></select></label>
+        <label>Avec<select data-filter="person"></select></label>
+        <label data-scope="tracks">Région<select data-filter="region"></select></label>
+        <label data-scope="tracks">Massif<select data-filter="massif"></select></label>
+        <label data-scope="tracks">Distance min (km)<input type="number" min="0" step="1" data-filter="distMin"></label>
+        <label data-scope="tracks">Distance max (km)<input type="number" min="0" step="1" data-filter="distMax"></label>
+        <label data-scope="tracks">D+ min (m)<input type="number" min="0" step="50" data-filter="gainMin"></label>
+        <label data-scope="tracks">D+ max (m)<input type="number" min="0" step="50" data-filter="gainMax"></label>
+      </div>
+      <p class="filter-note">Vue Sommets : seuls les dates, la saison, la personne et la recherche s’appliquent.</p>
+      <button class="btn small ghost" id="reset-filters">Réinitialiser les filtres</button>
+    </details>
+    <div class="list-tools" id="list-tools-tracks">
+      <span class="list-summary" id="list-summary"></span>
+      <button class="linklike" id="select-toggle" title="Choisir plusieurs sorties pour les réunir en trek">Sélectionner</button>
+    </div>
+    <div class="list-tools" id="list-tools-summits" hidden>
+      <span class="list-summary" id="summit-summary"></span>
+      <button class="btn small" id="summit-detect" title="Chercher les sommets et cols nommés sur tes traces (OpenStreetMap)">Détecter</button>
+      <button class="btn small primary" id="summit-add">+ Ajouter</button>
+    </div>
+    <ul class="hike-list" id="hike-list"></ul>
+    <div class="select-bar" id="select-bar" hidden></div>
+  </aside>
+  <button class="sidebar-toggle" id="sidebar-toggle" type="button" title="Masquer la liste" aria-label="Masquer la liste">«</button>
+
+  <main class="main">
+    <section id="view-map" class="view active">
+      <div id="map"></div>
+      <div class="map-toolbar">
+        <div class="mode-toggle" id="mode-toggle" role="group" aria-label="Affichage de la carte">
+          <button type="button" data-mode="tracks" class="active">Tracés</button>
+          <button type="button" data-mode="summits">Sommets</button>
+        </div>
+        <select id="basemap" title="Fond de carte"></select>
+        <select id="color-mode" title="Couleur des traces">
+          <option value="year">Couleur : année</option>
+          <option value="gain">Couleur : dénivelé</option>
+          <option value="distance">Couleur : distance</option>
+          <option value="type">Couleur : activité</option>
+          <option value="single">Couleur : unie</option>
+        </select>
+      </div>
+      <div class="legend" id="legend"></div>
+      <div class="empty-state" id="empty-state" hidden>
+        <h2>Aucune sortie pour l'instant</h2>
+        <p>Glisse tes fichiers GPX / FIT n'importe où sur la page,<br>ou directement le dossier de ton export Strava.</p>
+      </div>
+      <aside class="detail" id="detail" hidden></aside>
+      <button class="btn primary fly-stop" id="fly-stop" hidden>■ Arrêter le survol</button>
+      <div class="placing-hint" id="placing-hint" hidden>
+        Clique sur la carte pour placer la photo (elle s'aimante sur la trace)
+        <button class="btn small" id="placing-cancel">Annuler</button>
+      </div>
+      <div class="placing-hint" id="summit-hint" hidden>
+        <span id="summit-hint-text"></span>
+        <button class="btn small" id="summit-hint-cancel">Annuler</button>
+      </div>
+      <div class="fly-photo" id="fly-photo" hidden></div>
+      <div class="fly-bar" id="fly-bar" hidden>
+        <button class="fly-btn" id="fly-play" type="button" title="Pause (Espace)">❚❚</button>
+        <input type="range" id="fly-range" min="0" max="1000" step="1" value="0" aria-label="Position dans le survol">
+        <span class="fly-km" id="fly-km">0 / 0 km</span>
+        <button class="fly-btn speed" id="fly-speed" type="button" title="Vitesse">x1</button>
+      </div>
+    </section>
+
+    <section id="view-stats" class="view">
+      <div class="stats-wrap">
+        <div class="stats-scope" id="stats-scope"></div>
+        <div class="cards" id="stat-cards"></div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h3>Répartition</h3>
+            <div class="controls">
+              <label>Regrouper par <select id="g-by"></select></label>
+              <label>Mesure <select id="g-metric"></select></label>
+              <label>Calcul <select id="g-agg">
+                <option value="sum">Total</option>
+                <option value="avg">Moyenne</option>
+                <option value="max">Maximum</option>
+              </select></label>
+            </div>
+          </div>
+          <div class="chart" id="chart-group"></div>
+        </div>
+
+        <div class="two-col">
+          <div class="panel">
+            <div class="panel-head">
+              <h3>Cumul par année</h3>
+              <div class="controls"><select id="c-metric">
+                <option value="distance">Distance</option>
+                <option value="gain">Dénivelé positif</option>
+                <option value="count">Nombre de sorties</option>
+              </select></div>
+            </div>
+            <div class="chart" id="chart-cumul"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h3>Distance et dénivelé</h3><span class="hint">taille = temps en mouvement · clic = ouvrir</span></div>
+            <div class="chart" id="chart-scatter"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h3>Records</h3></div>
+          <div class="records" id="records"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h3>Toutes les sorties</h3>
+            <button class="btn small" id="export-csv">Exporter en CSV</button>
+          </div>
+          <div class="table-wrap"><table id="hike-table"></table></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-people" class="view">
+      <div class="people-wrap" id="people-wrap"></div>
+    </section>
+  </main>
+</div>
+
+<div class="lightbox" id="lightbox" hidden></div>
+<div class="drop-overlay" id="drop-overlay" hidden>
+  <div>Dépose tes fichiers<small>GPX / FIT / dossier Strava → nouvelles sorties · Photos → sortie ouverte</small></div>
+</div>
+<div class="modal-backdrop" id="modal" hidden><div class="modal" role="dialog" aria-modal="true"></div></div>
+<div class="toast" id="toast"></div>
+<datalist id="people-list"></datalist>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<script src="/static/app.js"></script>
+<script src="/static/treks.js"></script>
+<script src="/static/summits.js"></script>
+<script src="/static/people.js"></script>
+<script src="/static/main.js"></script>
+</body>
+</html>

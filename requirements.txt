@@ -1,0 +1,9 @@
+fastapi>=0.110
+uvicorn>=0.27
+python-multipart>=0.0.9
+gpxpy>=1.6
+fitdecode>=0.10
+fpdf2>=2.7.6
+pillow>=10.0
+pillow-heif>=0.16
+tzdata
